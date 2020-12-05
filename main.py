@@ -1,3 +1,6 @@
+from copy import deepcopy
+
+
 # TODO: complete dfa_apply_points()
 
 # For more readability
@@ -36,8 +39,10 @@ class State:
                f"Accept State: {self.accept_state}"
 
     def check_accept_state(self):
-        if len(self.to_transitions) == 0:
-            self.accept_state = True
+        for rule in self.prod_rules:
+            for derivation in rule.derivations:
+                if derivation[-1] == ".":
+                    self.accept_state = True
 
 
 # For extracting production rules
@@ -92,17 +97,33 @@ def extract_look_ahead(prod_rules):
     return prod_rules
 
 
+# DFA transitions
+def dfa_apply_transition(state_machine, state_idx):
+    for state in state_machine:
+        if state.state_num == state_idx:
+            current_state = state
+            temp_rules = deepcopy(current_state.prod_rules)
+            for rule in temp_rules:
+                for derivation in rule.derivations:
+                    if "." in derivation:
+                        dot_idx = derivation.index(".")
+                        if dot_idx + 1 != len(derivation):
+                            swap_str = derivation[dot_idx: dot_idx + 2]
+                            swap_str_rev = swap_str[::-1]
+                            derivation = derivation.replace(swap_str, swap_str_rev)
+                            temp_rule = ProdRule(rule.derive_symbol, [derivation], rule.look_ahead)
+                            temp_state = State([temp_rule])
+                            temp_state.check_accept_state()
+                            temp_state.from_transitions.append({derivation[dot_idx-1]: current_state.state_num})
+                            current_state.to_transitions.append({derivation[dot_idx-1]: temp_state.state_num})
+                            state_machine.append(temp_state)
+
+
 # For constructing the DFA
-def construct_dfa(state_machine, current_state_idx):
-    current_state = state_machine[current_state_idx]
-    temp_rules = current_state.prod_rules
-    for (rule_idx, rule) in enumerate(temp_rules):
-        for (derivation_idx, derivation) in enumerate(rule.derivations):
-            dot_idx = derivation.index(".")
-            if dot_idx + 1 != len(derivation):
-                swap_str = derivation[dot_idx: dot_idx + 2]
-                swap_str_rev = swap_str[::-1]
-                temp_rules[rule_idx].derivations[derivation_idx] = derivation.replace(swap_str, swap_str_rev)
+def construct_dfa(state_machine, state_track):
+    for states in state_track:
+        for state_idx in states:
+            dfa_apply_transition(state_machine, state_idx)
 
 
 with open("input.txt", "r") as input_file:
@@ -117,6 +138,7 @@ with open("input.txt", "r") as input_file:
     extract_look_ahead(prod_rules)
 
     state_machine = [State(prod_rules)]
-    construct_dfa(state_machine, 0)
+    state_track = [["I0"]]
+    construct_dfa(state_machine, state_track)
 
     fancy_print(state_machine)
