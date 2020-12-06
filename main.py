@@ -1,8 +1,6 @@
 from copy import deepcopy
 
 
-# TODO: complete dfa_apply_points()
-
 # For more readability
 def fancy_print(some_array):
     for elem in some_array:
@@ -30,6 +28,7 @@ class State:
         self.from_transitions: list = []
         self.to_transitions: list = []
         self.accept_state: bool = False
+        self.unpack_status: bool = False
 
         State.state_num += 1
 
@@ -81,20 +80,58 @@ def apply_points(prod_rules, find_derive_symbol, track):
 # For extracting look ahead from production rules
 def extract_look_ahead(prod_rules):
     for rule in prod_rules:
-        if prod_rules.index(rule) > 0:
+        if prod_rules.index(rule) > 0 and len(rule.look_ahead) == 0:
             prev_rule = prod_rules[prod_rules.index(rule) - 1]
             for prev_rule_derivation in prev_rule.derivations:
                 dot_idx = prev_rule_derivation.index(".")
                 if len(prev_rule_derivation) == 2:
                     rule.look_ahead.append(prev_rule.look_ahead[prev_rule.derivations.index(prev_rule_derivation)])
-                elif len(prev_rule_derivation) > 2 and prev_rule_derivation[dot_idx + 2].isupper():
-                    for rule_j in prod_rules:
-                        if rule_j.derive_symbol == prev_rule_derivation[dot_idx + 2]:
-                            for rule_j_derivation in rule_j.derivations:
-                                if rule_j_derivation[1].islower():
-                                    rule.look_ahead.append(rule_j_derivation[1])
+                elif len(prev_rule_derivation) > 2:
+                    if dot_idx + 2 != len(prev_rule_derivation):
+                        if prev_rule_derivation[dot_idx + 2].isupper():
+                            for rule_j in prod_rules:
+                                if rule_j.derive_symbol == prev_rule_derivation[dot_idx + 2]:
+                                    for rule_j_derivation in rule_j.derivations:
+                                        if rule_j_derivation[1].islower():
+                                            rule.look_ahead.append(rule_j_derivation[1])
+                    else:
+                        rule.look_ahead.append(prev_rule.look_ahead)
 
     return prod_rules
+
+
+def check_state_machine(state_machine, temp_state):
+    for state in state_machine:
+        if state.prod_rules != temp_state:
+            state_machine.append(temp_state)
+            return True
+        else:
+            return state.state_num
+
+
+def unpack_states(state_machine):
+    for (idx, state) in enumerate(state_machine):
+        if idx == 0:
+            state.unpack_status = True
+
+        if state.unpack_status or state.accept_state:
+            pass
+        else:
+            master_rules = state_machine[0].prod_rules
+            for rule in state.prod_rules:
+                for derivation in rule.derivations:
+                    if "." in derivation:
+                        dot_idx = derivation.index(".")
+                        if dot_idx + 1 != len(derivation):
+                            for master_rule in master_rules:
+                                if derivation[dot_idx + 1].isupper() and \
+                                        derivation[dot_idx + 1] == master_rule.derive_symbol:
+                                    temp_rule = ProdRule(master_rule.derive_symbol, master_rule.derivations)
+                                    state.prod_rules.append(temp_rule)
+
+            extract_look_ahead(state.prod_rules)
+
+            state.unpack_status = True
 
 
 # DFA transitions
@@ -114,16 +151,22 @@ def dfa_apply_transition(state_machine, state_idx):
                             temp_rule = ProdRule(rule.derive_symbol, [derivation], rule.look_ahead)
                             temp_state = State([temp_rule])
                             temp_state.check_accept_state()
-                            temp_state.from_transitions.append({derivation[dot_idx-1]: current_state.state_num})
-                            current_state.to_transitions.append({derivation[dot_idx-1]: temp_state.state_num})
-                            state_machine.append(temp_state)
+                            if check_state_machine(state_machine, temp_state):
+                                state_track[-1].append(temp_state.state_num)
+                                state_machine[-1].from_transitions.append({derivation[dot_idx]: current_state.state_num})
+                                current_state.to_transitions.append({derivation[dot_idx]: temp_state.state_num})
 
 
 # For constructing the DFA
 def construct_dfa(state_machine, state_track):
-    for states in state_track:
-        for state_idx in states:
-            dfa_apply_transition(state_machine, state_idx)
+    state_track_copy = deepcopy(state_track[-1])
+    state_track.append([])
+    for state_idx in state_track_copy:
+        dfa_apply_transition(state_machine, state_idx)
+
+    unpack_states(state_machine)
+
+    # construct_dfa(state_machine, state_track)
 
 
 with open("input.txt", "r") as input_file:
